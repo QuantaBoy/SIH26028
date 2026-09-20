@@ -1,0 +1,21 @@
+:root { --max: 60rem; --gap: 1rem; --fg: #1a1a1a; --bg: #fff; --muted: #666; --accent: #0b5fff; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg: #eee; --bg: #121212; --muted: #999; --accent: #6ea0ff; }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh;
+  display: flex; flex-direction: column;
+  font: 1rem/1.6 system-ui, sans-serif; color: var(--fg); background: var(--bg);
+}
+header, main, footer { width: 100%; max-width: var(--max); margin-inline: auto; padding: var(--gap); }
+main { flex: 1; }
+nav { display: flex; gap: var(--gap); align-items: center; }
+nav .brand { margin-right: auto; font-weight: 700; }
+a { color: var(--accent); }
+nav a { text-decoration: none; }
+nav a[aria-current="page"] { text-decoration: underline; }
+footer { color: var(--muted); }
+table { border-collapse: collapse; margin-block: var(--gap); }
+th, td { padding: .25rem .75rem; text-align: left; border-bottom: 1px solid var(--muted); }

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Weather</h1>
+<form method="get" action="{{ url_for('weather') }}">
+  <input name="city" value="{{ city }}" placeholder="City" required maxlength="100" autofocus>
+  <button>Search</button>
+</form>
+
+{% if error %}
+  <p role="alert">{{ error }}</p>
+{% elif data %}
+  {% set a, b = data.open_meteo, data.openweather %}
+  <h2>{{ data.city }}{% if data.country %}, {{ data.country }}{% endif %}</h2>
+  <table>
+    <thead><tr><th></th><th>Open-Meteo</th><th>OpenWeather</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Temperature</th><td>{{ a.temperature }}°C</td><td>{% if b %}{{ b.temperature }}°C{% else %}—{% endif %}</td></tr>
+      <tr><th scope="row">Humidity</th><td>{{ a.humidity }}%</td><td>{% if b %}{{ b.humidity }}%{% else %}—{% endif %}</td></tr>
+      <tr><th scope="row">Wind</th><td>{{ a.wind }} km/h</td><td>{% if b %}{{ b.wind }} km/h{% else %}—{% endif %}</td></tr>
+    </tbody>
+  </table>
+  {% if data.agree is not none %}
+    <p>{{ "Sources agree" if data.agree else "Sources differ" }} (temperature diff {{ data.temp_diff }}°C)</p>
+  {% else %}
+    <p>Cross-check skipped: {{ data.openweather_error }}</p>
+  {% endif %}
+  <small>Open-Meteo as of {{ a.time }}</small>
+{% endif %}
+{% endblock %}

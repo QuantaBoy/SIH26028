@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ title }}{% endblock %} · SIH26028</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header>
+    <nav>
+      <a class="brand" href="{{ url_for('home') }}">SIH26028</a>
+      {% block nav %}
+      <a href="{{ url_for('home') }}"{% if request.url.path == '/' %} aria-current="page"{% endif %}>Home</a>
+      <a href="{{ url_for('weather') }}"{% if request.url.path == '/weather' %} aria-current="page"{% endif %}>Weather</a>
+      {% endblock %}
+    </nav>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    <small>&copy; 2026 SIH26028</small>
+  </footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
