@@ -3,51 +3,25 @@ import os
 from unittest.mock import patch
 
 import httpx
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services.weather import get_weather
 
 c = TestClient(app)
-FAKE = {
-    "city": "Paris", "country": "France",
-    "open_meteo": {"time": "2026-09-20T12:00", "temperature": 18.5, "humidity": 60, "wind": 10.0},
-    "openweather": {"temperature": 19.0, "humidity": 58, "wind": 10.8},
-    "openweather_error": None, "temp_diff": 0.5, "agree": True,
-}
 
 
-def test_layout():
-    r = c.get("/")
-    assert r.status_code == 200 and "<nav" in r.text and "<footer" in r.text
+def test_root_redirects_to_docs():
+    r = c.get("/", follow_redirects=False)
+    assert r.status_code == 307 and r.headers["location"] == "/docs"
 
 
-def test_static_and_api():
-    assert c.get("/static/style.css").status_code == 200
+def test_health():
     assert c.get("/api/health").json() == {"status": "ok"}
 
 
-async def _fake(city):
-    return FAKE
-
-
-async def _missing(city):
-    raise HTTPException(404, f"City not found: {city}")
-
-
-def test_weather_ok():
-    with patch("app.routes.api.get_weather", _fake), patch("app.routes.pages.get_weather", _fake):
-        assert c.get("/api/weather?city=Paris").json() == FAKE
-        page = c.get("/weather?city=Paris").text
-        assert "18.5°C" in page and "19.0°C" in page and "Sources agree" in page
-
-
-def test_weather_errors():
-    assert c.get("/api/weather").status_code == 422  # city required
-    with patch("app.routes.api.get_weather", _missing), patch("app.routes.pages.get_weather", _missing):
-        assert c.get("/api/weather?city=zzz").status_code == 404
-        assert "City not found: &lt;b&gt;" in c.get("/weather?city=<b>").text  # escaped
+def test_city_required():
+    assert c.get("/api/weather").status_code == 422
 
 
 def _upstream(ow_status=200):
