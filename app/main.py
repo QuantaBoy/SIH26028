@@ -7,19 +7,14 @@ if __name__ == "__main__":  # `python app/main.py` puts app/ on sys.path, not th
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
 
-from app.routes import api
+from app.routes import api, pages
 
 load_dotenv(Path(__file__).parent.parent / ".env")  # works however the app is launched
 
 app = FastAPI(title="SIH26028")
+app.include_router(pages.router)
 app.include_router(api.router, prefix="/api")
-
-
-@app.get("/", include_in_schema=False)
-def root():
-    return RedirectResponse("/docs")
 
 
 if __name__ == "__main__":

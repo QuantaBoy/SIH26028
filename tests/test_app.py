@@ -11,9 +11,11 @@ from app.services.weather import get_weather
 c = TestClient(app)
 
 
-def test_root_redirects_to_docs():
-    r = c.get("/", follow_redirects=False)
-    assert r.status_code == 307 and r.headers["location"] == "/docs"
+def test_pages():
+    assert "<nav" in c.get("/").text
+    with _upstream():  # no network
+        page = c.get("/weather?city=Paris").text
+    assert "<pre>" in page and "open_meteo" in page  # raw API payload on the page (quotes HTML-escaped)
 
 
 def test_health():
