@@ -70,7 +70,10 @@ async def get_weather(city: str) -> dict:
     diff = round(abs(primary["temperature"] - second["temperature"]), 1) if second else None
     return {
         "city": place["name"],
+        "state": place.get("admin1"),  # geocoding is fuzzy: echo what it matched
         "country": place.get("country"),
+        "lat": lat,
+        "lon": lon,
         "open_meteo": primary,
         "openweather": second,
         "openweather_error": error,

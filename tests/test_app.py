@@ -32,7 +32,8 @@ def _upstream(ow_status=200):
         host = req.url.host
         if host.startswith("geocoding"):
             return httpx.Response(200, json={"results": [
-                {"name": "Paris", "country": "France", "latitude": 48.8, "longitude": 2.3}]})
+                {"name": "Paris", "admin1": "Ile-de-France", "country": "France",
+                 "latitude": 48.8, "longitude": 2.3}]})
         if host == "api.open-meteo.com":
             return httpx.Response(200, json={"current": {
                 "time": "t", "temperature_2m": 18.0, "relative_humidity_2m": 60, "wind_speed_10m": 10.0}})
@@ -53,6 +54,7 @@ def _get(key, **kw):
 
 def test_cross_check():
     d = _get("k")
+    assert (d["state"], d["lat"], d["lon"]) == ("Ile-de-France", 48.8, 2.3)  # matched place is visible
     assert d["openweather"] == {"temperature": 21.5, "humidity": 55, "wind": 10.8}  # 3 m/s -> km/h
     assert d["temp_diff"] == 3.5 and d["agree"] is False
 
