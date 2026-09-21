@@ -18,4 +18,4 @@ app.include_router(api.router, prefix="/api")
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8028, reload=True)  # 0.0.0.0 = reachable from other devices on the LAN

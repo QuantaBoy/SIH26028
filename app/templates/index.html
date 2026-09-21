@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 
 {% block content %}
-<p>SIH26028</p>
-<p><a href="{{ url_for('weather') }}">Weather</a> | <a href="/docs">/docs</a></p>
+<h3>Weather</h3>
+<form method="get" action="{{ url_for('home') }}">
+  <input name="city" value="{{ city }}" required maxlength="100" autofocus>
+  <button>Search</button>
+</form>
+{% if weather %}<pre>{{ weather }}</pre>{% endif %}
 {% endblock %}

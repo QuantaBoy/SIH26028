@@ -11,19 +11,14 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates"
 
 
 @router.get("/")
-def home(request: Request):
-    return templates.TemplateResponse(request, "index.html", {"title": "Home"})
-
-
-@router.get("/weather")
-async def weather(request: Request, city: str = Query("", max_length=100)):
-    """Same payload as /api/weather, dumped raw."""
+async def home(request: Request, city: str = Query("", max_length=100)):
+    """Home page: one place for all data. Weather output is the same payload as /api/weather, dumped raw."""
     city = city.strip()
-    output = None
+    weather = None
     if city:
         try:
-            output = json.dumps(await get_weather(city), indent=2)
+            weather = json.dumps(await get_weather(city), indent=2)
         except HTTPException as e:
-            output = json.dumps({"error": e.detail}, indent=2)
+            weather = json.dumps({"error": e.detail}, indent=2)
     return templates.TemplateResponse(
-        request, "weather.html", {"title": "Weather", "city": city, "output": output})
+        request, "index.html", {"title": "Home", "city": city, "weather": weather})
