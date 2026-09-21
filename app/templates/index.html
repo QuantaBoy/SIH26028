@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+  integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw=="
+  crossorigin="anonymous">
+{% endblock %}
+
 {% block content %}
 <h3>Weather</h3>
 <form method="get" action="{{ url_for('home') }}">
@@ -7,4 +13,57 @@
   <button>Search</button>
 </form>
 {% if weather %}<pre>{{ weather }}</pre>{% endif %}
+
+<h3>Railway lines</h3>
+<div id="map" style="height: 70vh"></div>
+<ul id="legend"></ul>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+  integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g=="
+  crossorigin="anonymous"></script>
+<script>
+const map = L.map("map");
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: "&copy; OpenStreetMap contributors",
+}).addTo(map);
+
+const COLORS = ["#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4", "#008080", "#9a6324"];
+// Station/route names come from CSV files, so they go in as text, never as HTML.
+const text = (s) => Object.assign(document.createElement("div"), { textContent: s });
+
+fetch("/api/railway/lines")
+  .then((r) => r.json())
+  .then((lines) => {
+    const all = [];
+    lines.forEach((line, i) => {
+      const color = COLORS[i % COLORS.length];
+      const pts = line.stations.map((s) => [s.lat, s.lon]);
+      all.push(...pts);
+      L.polyline(pts, { color, weight: 4 })
+        .bindTooltip(text(`${line.route} (${line.length_km} km)`), { sticky: true })
+        .addTo(map);
+      line.stations.forEach((s) =>
+        L.circleMarker([s.lat, s.lon], {
+          radius: 4, weight: 2, color, fillOpacity: 1,
+          fillColor: s.operational ? "#fff" : "#888", // grey = not in operation
+        })
+          .bindPopup(text(
+            s.name + (s.km_from_start === null ? "" : ` - ${s.km_from_start} km`) +
+            (s.operational ? "" : " (not in operation)")))
+          .addTo(map)
+      );
+
+      const li = document.createElement("li");
+      li.style.borderLeft = `1rem solid ${color}`;
+      li.style.paddingLeft = "0.5rem";
+      li.style.listStyle = "none";
+      li.textContent = `${line.route} - ${line.stations.length} stations`;
+      document.getElementById("legend").appendChild(li);
+    });
+    map.fitBounds(all);
+  });
+</script>
 {% endblock %}
