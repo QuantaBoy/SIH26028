@@ -18,6 +18,35 @@
 </form>
 {% if weather %}<pre>{{ weather }}</pre>{% endif %}
 
+<h3>Find a train</h3>
+<form method="get" action="{{ url_for('home') }}">
+  <label>Train number or name <input name="train" value="{{ train }}" maxlength="100"
+    placeholder="16021 or Kaveri"></label>
+  <label>Source <input name="source" value="{{ source }}" maxlength="100" placeholder="MAS or Chennai"></label>
+  <label>Destination <input name="destination" value="{{ destination }}" maxlength="100"
+    placeholder="SBC or Bengaluru"></label>
+  <button>Search</button>
+</form>
+{% if trains is not none %}
+  {% if trains %}
+  <table>
+    <tr><th>Train</th><th>Name</th><th>From</th><th>Departs</th><th>To</th><th>Arrives</th>
+      <th>Distance</th><th>Stops</th><th>Runs on</th></tr>
+    {% for t in trains %}
+    <tr>
+      <td>{{ t.number }}</td><td>{{ t.name }}</td>
+      <td>{{ t.from.name }} ({{ t.from.code }})</td><td>{{ t.from.departs }}</td>
+      <td>{{ t.to.name }} ({{ t.to.code }})</td>
+      <td>{{ t.to.arrives }}{% if t.to.day != "1" %} (day {{ t.to.day }}){% endif %}</td>
+      <td>{{ t.km }} km</td><td>{{ t.stops }}</td><td>{{ t.days | join(" ") }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No train matches. Stations can be a code (MAS) or part of a name (Chennai).</p>
+  {% endif %}
+{% endif %}
+
 <h3>Indian railway network</h3>
 <p id="summary">Loading…</p>
 <div id="map" style="height: 80vh"></div>
