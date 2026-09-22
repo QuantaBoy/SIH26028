@@ -1,7 +1,7 @@
 """All-India railway sections from india_railway_network_with_coordinates.csv, placed on the map.
 
 The CSV is a shapefile's attribute table without the shapes: each section is known
-only by the names of its two end junctions. Those names are located in stations.json
+only by the names of its two end junctions. Those names are located in the station list
 (station points with coordinates), and each section is drawn junction to junction.
 """
 import csv
@@ -15,7 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent.parent
 NETWORK_CSV = ROOT / "india_railway_network_with_coordinates.csv"
-STATIONS_JSON = ROOT / "stations.json"
+# Every station with coordinates and its code; committed with the repo, so a clone works as is.
+STATIONS_JSON = next((ROOT / "network_map").glob("*/india_railway_stations.geojson"))
 
 # Words that don't identify a place: "Arakkonam North Cabin" is at Arakkonam.
 NOISE = re.compile(
@@ -26,7 +27,7 @@ NOISE = re.compile(
 SLACK, SLACK_KM = 1.3, 15
 MAX_HOP_KM = 300  # the same check where the CSV gives no track length
 SAME_PLACE_KM = 5  # the CSV's own coordinates for a junction agree with ours this closely
-# Cities renamed after the station list was made: new spelling -> spelling in stations.json.
+# Cities renamed after the station list was made: new spelling -> spelling in the station list.
 RENAMED = {
     "bengaluru": "bangalore", "ballari": "bellary", "belagavi": "belgaum", "kalaburagi": "gulbarga",
     "mysuru": "mysore", "vijayapura": "bijapur", "shivamogga": "shimoga", "tumakuru": "tumkur",
