@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from app.services.db import route, search
 from app.services.network import STATIONS_JSON, load_network
 from app.services.weather import get_weather
 
@@ -25,3 +26,17 @@ def railway_network():
 @router.get("/railway/stations")
 def railway_stations():
     return FileResponse(STATIONS_JSON, media_type="application/geo+json")
+
+
+@router.get("/trains")
+def api_trains(train: str = Query("", max_length=100), source: str = Query("", max_length=100),
+               destination: str = Query("", max_length=100)):
+    return search(train, source, destination)
+
+
+@router.get("/trains/{number}/route")
+def api_train_route(number: str):
+    found = route(number)
+    if not found:
+        raise HTTPException(404, f"No train {number}")
+    return found

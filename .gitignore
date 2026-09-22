@@ -5,3 +5,5 @@ tests/
 EXP-TRAINS.json
 cross checked/*.json
 .playwright-cli/
+railway.db
+railway.building

@@ -7,6 +7,8 @@
 <style>
   #legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; padding: 0; list-style: none; }
   #legend li { border-left: 1rem solid; padding-left: 0.4rem; }
+  tr.shown { background: #ffe9b0; }
+  #route-summary:not(:empty) { font-weight: bold; }
 </style>
 {% endblock %}
 
@@ -31,15 +33,18 @@
   {% if trains %}
   <table>
     <tr><th>Train</th><th>Name</th><th>From</th><th>Departs</th><th>To</th><th>Arrives</th>
-      <th>Distance</th><th>Stops</th><th>Runs on</th></tr>
+      <th>Distance</th><th>Stops</th><th>Runs on</th><th>Route</th></tr>
     {% for t in trains %}
-    <tr>
+    <tr{% if t.number == show %} class="shown"{% endif %}>
       <td>{{ t.number }}</td><td>{{ t.name }}</td>
       <td>{{ t.from.name }} ({{ t.from.code }})</td><td>{{ t.from.departs }}</td>
       <td>{{ t.to.name }} ({{ t.to.code }})</td>
       <td>{{ t.to.arrives }}{% if t.day > 1 %} (day {{ t.day }}){% endif %}</td>
       <td>{{ t.km }} km</td><td>{{ t.stops }}</td>
       <td>{{ t.days | join(" ") if t.days else "not known" }}</td>
+      <td>{% if t.number == show %}on the map{% else %}<a href="?train={{ train | urlencode
+        }}&source={{ source | urlencode }}&destination={{ destination | urlencode
+        }}&show={{ t.number | urlencode }}#map">Show this one</a>{% endif %}</td>
     </tr>
     {% endfor %}
   </table>
@@ -50,6 +55,7 @@
 {% endif %}
 
 <h3>Indian railway network</h3>
+<p id="route-summary"></p>
 <p id="summary">Loading…</p>
 <div id="map" style="height: 80vh"></div>
 <ul id="legend"></ul>
@@ -72,6 +78,10 @@ const COLORS = ["#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4", "#008080"
 // Names come from data files, so they go in as text, never as HTML.
 const text = (s) => Object.assign(document.createElement("div"), { textContent: s });
 const layers = L.control.layers(null, null, { collapsed: false }).addTo(map);
+// A found train owns the map and the network fades behind it. The server picks which
+// one: the result chosen with ?show=<number>, else the first result.
+const drawn = {{ drawn | tojson }};
+const shown = drawn && drawn.number;
 
 fetch("/api/railway/network")
   .then((r) => r.json())
@@ -82,7 +92,8 @@ fetch("/api/railway/network")
     // The CSV has no track shapes, so each section runs straight junction to junction.
     // Dashed = one end was placed between its neighbours, not found by name.
     const lines = L.layerGroup(sections.map((s) =>
-      L.polyline(s.path, { color: color[s.zone], weight: 3, dashArray: s.approximate ? "6 6" : null })
+      L.polyline(s.path, { color: color[s.zone], weight: shown ? 2 : 3, opacity: shown ? 0.35 : 1,
+        dashArray: s.approximate ? "6 6" : null })
         .bindTooltip(text(`${s.from} - ${s.to}`), { sticky: true })
         .bindPopup(text([
           `${s.from} - ${s.to}`, s.zone, s.type,
@@ -97,7 +108,8 @@ fetch("/api/railway/network")
       L.circleMarker([j.lat, j.lon], {
         radius: 3, weight: 1, color: "#222", fillColor: j.approximate ? "#fff" : "#222", fillOpacity: 1,
       }).bindPopup(text(j.name + (j.code ? ` (${j.code})` : "") +
-        (j.approximate ? " (position approximate)" : ""))))).addTo(map);
+        (j.approximate ? " (position approximate)" : "")))));
+    if (!shown) nodes.addTo(map);  // with a route on screen the dots only crowd it
     layers.addOverlay(lines, "Sections");
     layers.addOverlay(nodes, "Junctions");
 
@@ -112,6 +124,42 @@ fetch("/api/railway/network")
       `Not drawn: sections touching the ${unlocated.length} junctions with no known location, ` +
       `and ${misplaced_sections} whose ends land farther apart than their track length.`;
   });
+
+// The chosen train: its stops in order, with the searched leg picked out.
+if (shown) {
+  fetch(`/api/trains/${encodeURIComponent(shown)}/route`)
+    .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+    .then((train) => {
+      const placed = train.stops.filter((s) => s.lat !== null);
+      const from = placed.findIndex((s) => s.station_code === drawn.from_code);
+      const to = placed.findIndex((s) => s.station_code === drawn.to_code);
+
+      const path = placed.map((s) => [s.lat, s.lon]);
+      L.polyline(path, { color: "#fff", weight: 9, opacity: 0.9 }).addTo(map);  // casing, for contrast
+      const line = L.polyline(path, { color: "#1a1a1a", weight: 4, opacity: 1 }).addTo(map);
+      if (from !== -1 && to > from) {  // the leg searched for, drawn over the whole run
+        L.polyline(placed.slice(from, to + 1).map((s) => [s.lat, s.lon]),
+          { color: "#e6194b", weight: 7, opacity: 0.9 }).addTo(map);
+      }
+      placed.forEach((s) =>
+        L.circleMarker([s.lat, s.lon], { radius: 5, weight: 2, color: "#000", fillColor: "#fff", fillOpacity: 1 })
+          .bindPopup(text([
+            `${s.seq}. ${s.station_name} (${s.station_code})`,
+            `arrives ${s.arrives}`, `departs ${s.departs}`, `${s.km} km`,
+            s.day > 1 && `day ${s.day}`,
+          ].filter(Boolean).join(" - ")))
+          .addTo(map));
+      map.fitBounds(line.getBounds(), { padding: [20, 20] });
+
+      const missing = train.stops.length - placed.length;
+      document.getElementById("route-summary").textContent =
+        `Train ${train.number} ${train.name}: ${train.stops.length} stops, ` +
+        `${placed.length} drawn${missing ? `, ${missing} with no known location` : ""}.`;
+    })
+    .catch(() => {
+      document.getElementById("route-summary").textContent = `No route found for train ${shown}.`;
+    });
+}
 
 // Every station a passenger train stops at; off by default, it hides the lines at country zoom.
 fetch("/api/railway/stations")
