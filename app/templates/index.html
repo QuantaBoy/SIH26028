@@ -65,7 +65,8 @@ fetch("/api/railway/network")
     const nodes = L.layerGroup(junctions.map((j) =>
       L.circleMarker([j.lat, j.lon], {
         radius: 3, weight: 1, color: "#222", fillColor: j.approximate ? "#fff" : "#222", fillOpacity: 1,
-      }).bindPopup(text(j.name + (j.approximate ? " (position approximate)" : ""))))).addTo(map);
+      }).bindPopup(text(j.name + (j.code ? ` (${j.code})` : "") +
+        (j.approximate ? " (position approximate)" : ""))))).addTo(map);
     layers.addOverlay(lines, "Sections");
     layers.addOverlay(nodes, "Junctions");
 

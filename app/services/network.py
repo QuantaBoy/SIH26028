@@ -1,4 +1,4 @@
-"""All-India railway sections from Railway_Network_.csv, placed on the map.
+"""All-India railway sections from india_railway_network_with_coordinates.csv, placed on the map.
 
 The CSV is a shapefile's attribute table without the shapes: each section is known
 only by the names of its two end junctions. Those names are located in stations.json
@@ -14,7 +14,7 @@ from functools import cache
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent.parent
-NETWORK_CSV = ROOT / "Railway_Network_.csv"
+NETWORK_CSV = ROOT / "india_railway_network_with_coordinates.csv"
 STATIONS_JSON = ROOT / "stations.json"
 
 # Words that don't identify a place: "Arakkonam North Cabin" is at Arakkonam.
@@ -25,6 +25,7 @@ NOISE = re.compile(
 # A junction pair this much farther apart in a straight line than by rail is a wrong name match.
 SLACK, SLACK_KM = 1.3, 15
 MAX_HOP_KM = 300  # the same check where the CSV gives no track length
+SAME_PLACE_KM = 5  # the CSV's own coordinates for a junction agree with ours this closely
 # Cities renamed after the station list was made: new spelling -> spelling in stations.json.
 RENAMED = {
     "bengaluru": "bangalore", "ballari": "bellary", "belagavi": "belgaum", "kalaburagi": "gulbarga",
@@ -69,12 +70,18 @@ def _num(s):
 @cache
 def load_network() -> dict:
     # The CSV has one row per geometry piece; a section is one pair of end junctions.
-    sections = {}
+    # The CSV also carries a station code and coordinates for many junctions; the
+    # coordinates are sometimes far off, so a code is only trusted where they agree with ours.
+    sections, csv_code = {}, {}
     with open(NETWORK_CSV, encoding="utf-8-sig", newline="") as f:
         for r in csv.DictReader(f):
             a, b = r["fromjunction"].strip(), r["tojunction"].strip()
             if not a or not b or a == b:
                 continue
+            for name, side in ((a, "from"), (b, "to")):
+                if r[f"{side}_station_code"] and r[f"{side}_lat"]:
+                    csv_code.setdefault(name, (float(r[f"{side}_lat"]), float(r[f"{side}_lon"]),
+                                               r[f"{side}_station_code"]))
             s = sections.setdefault(tuple(sorted((a, b))), {
                 "from": a, "to": b, "zone": ZONE_FIX.get(z := r["railwayzone"].strip(), z) or "Unknown",
                 "type": r["type"].strip() or "Unknown",
@@ -83,11 +90,12 @@ def load_network() -> dict:
             s["bridges"] += r["bridge_yn"] == "Y"
 
     # One name can be several places (Bilaspur in Chhattisgarh and in Himachal), so keep them all.
-    coords, exact = defaultdict(list), defaultdict(list)
+    coords, exact, code_at = defaultdict(list), defaultdict(list), {}
     for f in json.load(open(STATIONS_JSON, encoding="utf-8"))["features"]:
         if f["geometry"]:
             lon, lat = f["geometry"]["coordinates"]
             name = f["properties"]["name"]
+            code_at.setdefault((lat, lon), f["properties"]["code"])
             exact[re.sub(r"[^a-z]", "", name.lower())].append((lat, lon))
             if key(name):
                 coords[key(name)].append((lat, lon))
@@ -161,9 +169,18 @@ def load_network() -> dict:
                 continue
             drawn.append({**s, "path": [a, b], "approximate": s["from"] in approx or s["to"] in approx})
     on_map = {n for s in drawn for n in (s["from"], s["to"])}
+
+    def code(name):
+        if name in approx:
+            return None
+        if name in csv_code and km(located[name], csv_code[name][:2]) <= SAME_PLACE_KM:
+            return csv_code[name][2]
+        return code_at.get(located[name])  # the station we matched the name to
+
     return {
         "sections": drawn,
-        "junctions": [{"name": n, "lat": p[0], "lon": p[1], "approximate": n in approx}
+        "junctions": [{"name": n, "lat": p[0], "lon": p[1], "approximate": n in approx,
+                       "code": code(n)}
                       for n, p in sorted(located.items()) if n in on_map],
         "unlocated": sorted(names - located.keys()),
         "total_sections": len(sections),
