@@ -37,13 +37,15 @@
       <td>{{ t.number }}</td><td>{{ t.name }}</td>
       <td>{{ t.from.name }} ({{ t.from.code }})</td><td>{{ t.from.departs }}</td>
       <td>{{ t.to.name }} ({{ t.to.code }})</td>
-      <td>{{ t.to.arrives }}{% if t.to.day != "1" %} (day {{ t.to.day }}){% endif %}</td>
-      <td>{{ t.km }} km</td><td>{{ t.stops }}</td><td>{{ t.days | join(" ") }}</td>
+      <td>{{ t.to.arrives }}{% if t.day > 1 %} (day {{ t.day }}){% endif %}</td>
+      <td>{{ t.km }} km</td><td>{{ t.stops }}</td>
+      <td>{{ t.days | join(" ") if t.days else "not known" }}</td>
     </tr>
     {% endfor %}
   </table>
   {% else %}
-  <p>No train matches. Stations can be a code (MAS) or part of a name (Chennai).</p>
+  <p>No train matches. Stations can be a code (MAS) or part of a name (Chennai).
+    Timetables are from 2015, so trains added since (Vande Bharat, Tejas) are not listed.</p>
   {% endif %}
 {% endif %}
 
