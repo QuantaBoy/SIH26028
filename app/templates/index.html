@@ -4,6 +4,10 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
   integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw=="
   crossorigin="anonymous">
+<style>
+  #legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; padding: 0; list-style: none; }
+  #legend li { border-left: 1rem solid; padding-left: 0.4rem; }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -14,8 +18,9 @@
 </form>
 {% if weather %}<pre>{{ weather }}</pre>{% endif %}
 
-<h3>Railway lines</h3>
-<div id="map" style="height: 70vh"></div>
+<h3>Indian railway network</h3>
+<p id="summary">Loading…</p>
+<div id="map" style="height: 80vh"></div>
 <ul id="legend"></ul>
 {% endblock %}
 
@@ -24,46 +29,67 @@
   integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g=="
   crossorigin="anonymous"></script>
 <script>
-const map = L.map("map");
+// Thousands of lines and dots: canvas keeps panning smooth where SVG would lag.
+const map = L.map("map", { preferCanvas: true }).setView([22.5, 80], 5);
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution: "&copy; OpenStreetMap contributors",
 }).addTo(map);
 
-const COLORS = ["#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4", "#008080", "#9a6324"];
-// Station/route names come from CSV files, so they go in as text, never as HTML.
+const COLORS = ["#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4", "#008080", "#9a6324", "#800000",
+  "#000075", "#808000", "#f032e6", "#469990", "#bfef45", "#dcbeff", "#ffe119", "#42d4f4", "#fabed4", "#a9a9a9"];
+// Names come from data files, so they go in as text, never as HTML.
 const text = (s) => Object.assign(document.createElement("div"), { textContent: s });
+const layers = L.control.layers(null, null, { collapsed: false }).addTo(map);
 
-fetch("/api/railway/lines")
+fetch("/api/railway/network")
   .then((r) => r.json())
-  .then((lines) => {
-    const all = [];
-    lines.forEach((line, i) => {
-      const color = COLORS[i % COLORS.length];
-      const pts = line.stations.map((s) => [s.lat, s.lon]);
-      all.push(...pts);
-      L.polyline(pts, { color, weight: 4 })
-        .bindTooltip(text(`${line.route} (${line.length_km} km)`), { sticky: true })
-        .addTo(map);
-      line.stations.forEach((s) =>
-        L.circleMarker([s.lat, s.lon], {
-          radius: 4, weight: 2, color, fillOpacity: 1,
-          fillColor: s.operational ? "#fff" : "#888", // grey = not in operation
-        })
-          .bindPopup(text(
-            s.name + (s.km_from_start === null ? "" : ` - ${s.km_from_start} km`) +
-            (s.operational ? "" : " (not in operation)")))
-          .addTo(map)
-      );
+  .then(({ sections, junctions, unlocated, total_sections, misplaced_sections }) => {
+    const zones = [...new Set(sections.map((s) => s.zone))].sort();
+    const color = Object.fromEntries(zones.map((z, i) => [z, COLORS[i % COLORS.length]]));
 
+    // The CSV has no track shapes, so each section runs straight junction to junction.
+    // Dashed = one end was placed between its neighbours, not found by name.
+    const lines = L.layerGroup(sections.map((s) =>
+      L.polyline(s.path, { color: color[s.zone], weight: 3, dashArray: s.approximate ? "6 6" : null })
+        .bindTooltip(text(`${s.from} - ${s.to}`), { sticky: true })
+        .bindPopup(text([
+          `${s.from} - ${s.to}`, s.zone, s.type,
+          s.track_km !== null && `${s.track_km} km`,
+          s.stations !== null && `${s.stations} stations`,
+          s.speed !== null && `max ${s.speed} km/h`,
+          s.lanes !== null && `${s.lanes} line(s)`,
+          s.bridges && `${s.bridges} bridge piece(s)`,
+          s.approximate && "position approximate",
+        ].filter(Boolean).join(" · "))))).addTo(map);
+    const nodes = L.layerGroup(junctions.map((j) =>
+      L.circleMarker([j.lat, j.lon], {
+        radius: 3, weight: 1, color: "#222", fillColor: j.approximate ? "#fff" : "#222", fillOpacity: 1,
+      }).bindPopup(text(j.name + (j.approximate ? " (position approximate)" : ""))))).addTo(map);
+    layers.addOverlay(lines, "Sections");
+    layers.addOverlay(nodes, "Junctions");
+
+    zones.forEach((z) => {
       const li = document.createElement("li");
-      li.style.borderLeft = `1rem solid ${color}`;
-      li.style.paddingLeft = "0.5rem";
-      li.style.listStyle = "none";
-      li.textContent = `${line.route} - ${line.stations.length} stations`;
+      li.style.borderColor = color[z];
+      li.textContent = `${z} (${sections.filter((s) => s.zone === z).length})`;
       document.getElementById("legend").appendChild(li);
     });
-    map.fitBounds(all);
+    document.getElementById("summary").textContent =
+      `${sections.length} of ${total_sections} sections and ${junctions.length} junctions mapped. ` +
+      `Not drawn: sections touching the ${unlocated.length} junctions with no known location, ` +
+      `and ${misplaced_sections} whose ends land farther apart than their track length.`;
+  });
+
+// Every station a passenger train stops at; off by default, it hides the lines at country zoom.
+fetch("/api/railway/stations")
+  .then((r) => r.json())
+  .then((geo) => {
+    const located = geo.features.filter((f) => f.geometry);
+    layers.addOverlay(L.geoJSON(located, {
+      pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 2, weight: 0, fillColor: "#e6194b", fillOpacity: 0.8 }),
+      onEachFeature: (f, layer) => layer.bindPopup(text(`${f.properties.name} (${f.properties.code})`)),
+    }), `Stations (${located.length})`);
   });
 </script>
 {% endblock %}

@@ -10,7 +10,8 @@ from fastapi import FastAPI
 
 from app.routes import api, pages
 
-load_dotenv(Path(__file__).parent.parent / ".env")  # works however the app is launched
+ROOT = Path(__file__).parent.parent
+load_dotenv(ROOT / ".env")  # works however the app is launched
 
 app = FastAPI(title="SIH26028")
 app.include_router(pages.router)
