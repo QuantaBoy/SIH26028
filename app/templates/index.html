@@ -125,6 +125,31 @@ fetch("/api/railway/network")
       `and ${misplaced_sections} whose ends land farther apart than their track length.`;
   });
 
+// Weather on hover, from our own database (a poller keeps it fresh), so the tooltip
+// answers at once and no amount of hovering hammers the weather service.
+const weatherCache = new Map();
+
+function weatherLine(w) {
+  if (!w) return "weather not loaded yet";
+  const rain = w.precipitation ? `, ${w.precipitation} mm rain` : "";
+  return `${Math.round(w.temperature)}°C, ${w.condition}, wind ${Math.round(w.wind)} km/h${rain}`;
+}
+
+function showWeather(layer, code, name) {
+  const label = (w) => layer.bindTooltip(text(`${name} (${code}) - ${weatherLine(w)}`), { sticky: true })
+    .openTooltip();
+  if (weatherCache.has(code)) return label(weatherCache.get(code));
+
+  label(null);  // something shows immediately; the reading replaces it when it lands
+  fetch(`/api/stations/${encodeURIComponent(code)}/weather`)
+    .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+    .then(({ weather }) => {
+      weatherCache.set(code, weather);
+      if (layer.isTooltipOpen()) label(weather);
+    })
+    .catch(() => weatherCache.set(code, null));
+}
+
 // The chosen train: its stops in order, with the searched leg picked out.
 if (shown) {
   fetch(`/api/trains/${encodeURIComponent(shown)}/route`)
@@ -143,6 +168,7 @@ if (shown) {
       }
       placed.forEach((s) =>
         L.circleMarker([s.lat, s.lon], { radius: 5, weight: 2, color: "#000", fillColor: "#fff", fillOpacity: 1 })
+          .on("mouseover", function () { showWeather(this, s.station_code, s.station_name); })
           .bindPopup(text([
             `${s.seq}. ${s.station_name} (${s.station_code})`,
             `arrives ${s.arrives}`, `departs ${s.departs}`, `${s.km} km`,
@@ -168,7 +194,10 @@ fetch("/api/railway/stations")
     const located = geo.features.filter((f) => f.geometry);
     layers.addOverlay(L.geoJSON(located, {
       pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 2, weight: 0, fillColor: "#e6194b", fillOpacity: 0.8 }),
-      onEachFeature: (f, layer) => layer.bindPopup(text(`${f.properties.name} (${f.properties.code})`)),
+      onEachFeature: (f, layer) => {
+        layer.bindPopup(text(`${f.properties.name} (${f.properties.code})`));
+        layer.on("mouseover", () => showWeather(layer, f.properties.code, f.properties.name));
+      },
     }), `Stations (${located.length})`);
   });
 </script>

@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 from app.services.db import route, search
 from app.services.network import STATIONS_JSON, load_network
 from app.services.weather import get_weather
+from app.services.weather_db import station_weather
 
 router = APIRouter()
 
@@ -39,4 +40,13 @@ def api_train_route(number: str):
     found = route(number)
     if not found:
         raise HTTPException(404, f"No train {number}")
+    return found
+
+
+@router.get("/stations/{code}/weather")
+def api_station_weather(code: str):
+    """Weather at a station, served from weather.db: never a live call on a page request."""
+    found = station_weather(code)
+    if not found:
+        raise HTTPException(404, f"No station {code}")
     return found

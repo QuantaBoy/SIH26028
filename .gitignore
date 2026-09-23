@@ -7,3 +7,4 @@ cross checked/*.json
 .playwright-cli/
 railway.db
 railway.building
+weather.db
