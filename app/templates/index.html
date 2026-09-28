@@ -8,6 +8,7 @@
   #bridges td, #bridges th { padding: 0.1rem 0.6rem 0.1rem 0; text-align: left; }
   #bridges td.n { text-align: right; }
   #live-table td, #live-table th { padding: 0.1rem 0.8rem 0.1rem 0; text-align: left; }
+  #train-list td, #train-list th { padding: 0.15rem 0.8rem 0.15rem 0; text-align: left; }
   #live-table tr.passed { color: #777; }
   #live-table .late { color: #c0392b; }
   #live-table .early { color: #1e8449; }
@@ -32,6 +33,23 @@
   <button>Search</button>
 </form>
 {% if weather %}<pre>{{ weather }}</pre>{% endif %}
+
+<h3>Trains</h3>
+<table id="train-list">
+  <tr><th>Train</th><th>Name</th><th>From</th><th>Departs</th><th>To</th><th>Arrives</th>
+    <th>Halts</th><th>Runs on</th><th>Runs collected</th><th></th></tr>
+  {% for t in trains %}
+  <tr>
+    <td>{{ t.number }}</td><td>{{ t.name or "" }}</td>
+    <td>{{ t.from or "" }}</td><td>{{ t.departs or "" }}</td>
+    <td>{{ t.to or "" }}</td><td>{{ t.arrives or "" }}</td>
+    <td>{{ t.halts or "" }}</td>
+    <td>{{ t.days | join(" ") if t.days | length < 7 else "daily" }}</td>
+    <td>{{ t.runs }}</td>
+    <td>{% if t.runs %}<a href="{{ url_for('train_page', number=t.number) }}">View more details</a>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
 
 <h3>Live tracking and ETA</h3>
 <p>Trains on the Chennai - Bengaluru corridor, whose real runs are collected daily for the

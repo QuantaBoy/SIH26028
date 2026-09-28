@@ -54,8 +54,17 @@ def railway_bridges():
 
 @router.get("/trains")
 def api_trains():
-    """The trains whose runs are collected every day, the ones ETAs learn for."""
-    return live.tracked()
+    """The trains whose runs are collected every day, with their end points and times."""
+    return live.train_list()
+
+
+@router.get("/trains/{number}")
+def api_train_detail(number: str):
+    """A train's route: every halt with scheduled times and how late it really was there."""
+    found = live.train_detail(number)
+    if not found:
+        raise HTTPException(404, f"No stored runs for train {number}")
+    return found
 
 
 @router.get("/trains/{number}/live")

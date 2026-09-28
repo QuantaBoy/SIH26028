@@ -162,6 +162,59 @@ def tracked() -> list[dict]:
             for n in TRACKED]
 
 
+def train_detail(number: str) -> dict | None:
+    """A tracked train's route from its stored runs: every halt with its scheduled times (from the
+    latest run), and how late the train really was there across every run collected. Reads
+    runs.db only, so it never spends a RailRadar call."""
+    runs = runs_of(number)
+    if not runs:
+        return None
+    latest = runs[-1]
+    start = date.fromisoformat(latest[0]["start_date"])
+
+    def clock(iso):  # "HH:MM", plus the day of the run when it is past the first
+        if not iso:
+            return None
+        t = datetime.fromisoformat(iso)
+        day = (t.date() - start).days + 1
+        return t.strftime("%H:%M") + (f" (day {day})" if day > 1 else "")
+
+    delays = {}
+    for run in runs:
+        for r in run:
+            d = r["delay_arr"] if r["delay_arr"] is not None else r["delay_dep"]
+            if d is not None:
+                delays.setdefault(r["station"], []).append(d)
+    halts = []
+    for r in latest:
+        s = stations().get(r["station"], {})
+        ds = delays.get(r["station"], [])
+        halts.append({"code": r["station"], "name": s.get("name", r["station"]),
+                      "lat": s.get("lat"), "lon": s.get("lon"),
+                      "arrives": clock(r["sched_arr"]), "departs": clock(r["sched_dep"]),
+                      "runs_seen": len(ds), "avg_delay": round(sum(ds) / len(ds)) if ds else None,
+                      "last_delay": ds[-1] if ds else None})
+    t = next(t for t in tracked() if t["number"] == number) if number in TRACKED else \
+        {"number": number, "name": meta(f"name:{number}"), "days": []}
+    return {**t, "runs": len(runs), "since": runs[0][0]["start_date"],
+            "last_run": latest[0]["start_date"], "halts": halts}
+
+
+def train_list() -> list[dict]:
+    """Every tracked train with its end points and times, for the train list."""
+    out = []
+    for t in tracked():
+        d = train_detail(t["number"])
+        if d:
+            first, last = d["halts"][0], d["halts"][-1]
+            out.append({**t, "from": first["name"], "to": last["name"], "departs": first["departs"],
+                        "arrives": last["arrives"], "halts": len(d["halts"]), "runs": d["runs"]})
+        else:
+            out.append({**t, "from": None, "to": None, "departs": None, "arrives": None,
+                        "halts": 0, "runs": 0})
+    return out
+
+
 def runs_of(number: str) -> list[list[sqlite3.Row]]:
     """Every stored run of a train, each its halts in order."""
     con = connect()
