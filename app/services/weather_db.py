@@ -11,9 +11,11 @@ ETA model has to ask.
 
 Two limits shape the design. Open-Meteo's free tier counts every coordinate as a call
 (600 a minute, 10,000 a day), and weather barely changes between stations a few km apart.
-So stations are grouped into grid cells about 55 km across: 8,697 stations become 843
-fetches, each covering the next two days, refreshed every few hours. That is ~3,400 calls
-a day, inside the free tier, and every station still has its own hourly forecast.
+So stations are grouped into grid cells about 55 km across: 8,697 stations and 1,662
+network junctions become 849 fetches, each covering at least the next two days, refreshed every few
+hours. That is ~3,400 calls a day, inside the free tier, and every station and junction
+still has its own hourly forecast. The same cells, drawn on the map, are the weather grid
+of the Entire Network page.
 
     python -m app.services.weather_db          # one refresh pass, then a summary
 """
@@ -27,7 +29,7 @@ from pathlib import Path
 
 import httpx
 
-from app.services.db import connect as railway_db
+from app.services.network import load_network, stations
 
 ROOT = Path(__file__).parent.parent.parent
 DB_PATH = ROOT / "weather.db"
@@ -35,7 +37,7 @@ OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 CELL_DEGREES = 0.5  # ~55 km
 BATCH = 100  # coordinates per call
 BATCH_PAUSE_SECONDS = 11  # 600 coordinates a minute is the free tier's limit
-FORECAST_DAYS = 2
+FORECAST_DAYS = 3  # calendar days from today, so at least 48 hours ahead at any time of day
 REFRESH_HOURS = float(os.environ.get("WEATHER_REFRESH_HOURS", 6))
 HOURLY = "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,weather_code"
 IST = timezone(timedelta(hours=5, minutes=30))  # Indian Railways runs on IST
@@ -84,15 +86,12 @@ def connect() -> sqlite3.Connection:
 
 
 def cells() -> dict[str, tuple[float, float]]:
-    """Every cell holding at least one station, with the point to ask the weather for."""
-    con = railway_db()
-    try:
-        rows = con.execute("SELECT lat, lon FROM stations WHERE lat IS NOT NULL").fetchall()
-    finally:
-        con.close()
+    """Every cell holding a station or a network junction, with the point to ask the weather for."""
+    points = [(s["lat"], s["lon"]) for s in stations().values()]
+    points += [(j["lat"], j["lon"]) for j in load_network()["junctions"]]
     found = {}
-    for r in rows:
-        found.setdefault(cell_of(r["lat"], r["lon"]), (r["lat"], r["lon"]))
+    for lat, lon in points:
+        found.setdefault(cell_of(lat, lon), (lat, lon))
     return found
 
 
@@ -143,8 +142,17 @@ async def refresh(limit: int | None = None) -> dict:
 
 
 async def poll_forever() -> None:
-    """Refresh every REFRESH_HOURS for as long as the app runs, starting with a pass now."""
+    """Refresh every REFRESH_HOURS for as long as the app runs. A restart (every code save,
+    with reload on) waits out the stored forecasts' age instead of paying 849 calls again."""
     while True:
+        con = connect()
+        try:
+            last = con.execute("SELECT MAX(fetched_at) FROM forecasts").fetchone()[0] or 0
+        finally:
+            con.close()
+        if (wait := last + REFRESH_HOURS * 3600 - time.time()) > 0:
+            await asyncio.sleep(wait)
+            continue
         try:
             result = await refresh()
             logging.getLogger(__name__).info("weather refreshed: %s", result)
@@ -169,15 +177,28 @@ def forecast_at(lat: float, lon: float, when: datetime | None = None) -> dict | 
             "fetched_at": r["fetched_at"], "age_seconds": int(time.time()) - r["fetched_at"]}
 
 
-def station_weather(code: str, when: datetime | None = None) -> dict | None:
-    """Weather at a station, for now or for the hour a train is due. None if unknown."""
-    con = railway_db()
+def grid(hour: str | None = None) -> dict:
+    """Every cell's forecast for one hour (now by default), and the hours stored from now on,
+    so the map can shade the whole country and step through the next two days."""
+    hour = hour or hour_key()
+    con = connect()
     try:
-        s = con.execute("SELECT code, name, lat, lon FROM stations WHERE code = ?",
-                        (code.upper(),)).fetchone()
+        rows = con.execute("SELECT cell, temperature, precipitation, wind, weather_code FROM forecasts "
+                           "WHERE hour = ?", (hour,)).fetchall()
+        hours = [r[0] for r in con.execute("SELECT DISTINCT hour FROM forecasts WHERE hour >= ? ORDER BY hour",
+                                           (hour_key(),))]
     finally:
         con.close()
-    if not s or s["lat"] is None:
+    return {"hour": hour, "hours": hours, "cell_degrees": CELL_DEGREES, "conditions": CONDITIONS,
+            # [lat, lon, °C, rain mm, wind km/h, weather code], lat/lon being the cell's centre
+            "cells": [[*map(float, r["cell"].split(",")), r["temperature"], r["precipitation"], r["wind"],
+                       r["weather_code"]] for r in rows]}
+
+
+def station_weather(code: str, when: datetime | None = None) -> dict | None:
+    """Weather at a station, for now or for the hour a train is due. None if unknown."""
+    s = stations().get(code.upper())
+    if not s:
         return None
     return {"code": s["code"], "name": s["name"], "weather": forecast_at(s["lat"], s["lon"], when)}
 

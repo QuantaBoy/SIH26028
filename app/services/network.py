@@ -40,6 +40,16 @@ ZONE_FIX = {"Southen Railway": "Southern Railway", "Westem Railway": "Western Ra
             "East Coast Railwa": "East Coast Railway", "North Frontier Railway": "Northeast Frontier Railway"}
 
 
+@cache
+def stations() -> dict[str, dict]:
+    """Every located station by code: name, lat, lon."""
+    return {f["properties"]["code"].strip(): {"code": f["properties"]["code"].strip(),
+                                              "name": f["properties"]["name"].strip(),
+                                              "lat": f["geometry"]["coordinates"][1],
+                                              "lon": f["geometry"]["coordinates"][0]}
+            for f in json.load(open(STATIONS_JSON, encoding="utf-8"))["features"] if f["geometry"]}
+
+
 def key(name: str) -> str:
     name = re.sub(r"\(.*?(\)|$)", "", name.lower())
     k = re.sub(r"[^a-z]", "", NOISE.sub("", name))
@@ -87,8 +97,20 @@ def load_network() -> dict:
                 "from": a, "to": b, "zone": ZONE_FIX.get(z := r["railwayzone"].strip(), z) or "Unknown",
                 "type": r["type"].strip() or "Unknown",
                 "speed": _num(r["speed"]), "stations": _num(r["noofstations"]),
-                "track_km": _num(r["tracklength"]), "lanes": _num(r["nooflanes"]), "bridges": 0})
-            s["bridges"] += r["bridge_yn"] == "Y"
+                "track_km": _num(r["tracklength"]), "lanes": _num(r["nooflanes"]),
+                "bridge_spans": 0, "bridge_m": 0.0, "longest_bridge_m": 0.0,
+                "tunnel_spans": 0, "tunnel_m": 0.0})
+            # Each row is one piece of track; st_lengthshape is its length in metres. A piece
+            # flagged as bridge or tunnel is a span: they range from a 4 m culvert to the
+            # 4.4 km Ganga bridge at Munger. The CSV never says where along the section it is.
+            length = _num(r["st_lengthshape"]) or 0.0
+            if r["bridge_yn"] == "Y":
+                s["bridge_spans"] += 1
+                s["bridge_m"] += length
+                s["longest_bridge_m"] = max(s["longest_bridge_m"], length)
+            if r["tunnel_yn"] == "Y":
+                s["tunnel_spans"] += 1
+                s["tunnel_m"] += length
 
     # One name can be several places (Bilaspur in Chhattisgarh and in Himachal), so keep them all.
     coords, exact, code_at = defaultdict(list), defaultdict(list), {}
@@ -168,7 +190,11 @@ def load_network() -> dict:
             if km(a, b) > (SLACK * s["track_km"] + SLACK_KM if s["track_km"] else MAX_HOP_KM):
                 misplaced += 1
                 continue
-            drawn.append({**s, "path": [a, b], "approximate": s["from"] in approx or s["to"] in approx})
+            drawn.append({**s, "path": [a, b], "approximate": s["from"] in approx or s["to"] in approx,
+                          # No position is given for a span, so it is shown at the section's middle.
+                          "mid": [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
+                          "bridge_m": round(s["bridge_m"]), "tunnel_m": round(s["tunnel_m"]),
+                          "longest_bridge_m": round(s["longest_bridge_m"])})
     on_map = {n for s in drawn for n in (s["from"], s["to"])}
 
     def code(name):

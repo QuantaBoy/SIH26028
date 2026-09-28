@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from app.routes import api, pages
+from app.services.live import collect_forever
 from app.services.weather_db import poll_forever
 
 ROOT = Path(__file__).parent.parent
@@ -20,10 +21,11 @@ load_dotenv(ROOT / ".env")  # works however the app is launched
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Keep station weather fresh in the background, so requests only ever read the file."""
-    poller = asyncio.create_task(poll_forever())
+    """Keep station weather fresh and collect each day's real runs, in the background."""
+    tasks = [asyncio.create_task(poll_forever()), asyncio.create_task(collect_forever())]
     yield
-    poller.cancel()
+    for t in tasks:
+        t.cancel()
 
 
 app = FastAPI(title="SIH26028", lifespan=lifespan)
